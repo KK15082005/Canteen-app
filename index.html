@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CanteenHub – School Canteen</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+  <!-- Our CSS (separate file) -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- React & Babel via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+
+  <div id="root"></div>
+
+  <!--
+    NOTE: All JS is in one <script> tag below.
+    Babel (the tool that understands JSX like <div>) only works
+    when the code is directly inside a <script> tag — it cannot
+    load JSX from external .js files when opening from your desktop.
+
+    The logic is still split into clear sections just like separate files.
+    For a real app with a build tool (like Vite), you would split these.
+  -->
+  <script type="text/babel">
+
+    // ============================================================
+    // SECTION 1: DATA  (same as data.js)
+    // Mock data — in a real app this comes from fetch('/snacks') etc.
+    // ============================================================
+
+    const INITIAL_SNACKS = [
+      { id: 1, name: "Masala Maggi",   price: 30, emoji: "🍜", ordersCount: 142 },
+      { id: 2, name: "Samosa (2 pcs)", price: 20, emoji: "🥟", ordersCount: 210 },
+      { id: 3, name: "Cold Coffee",    price: 40, emoji: "☕", ordersCount: 98  },
+      { id: 4, name: "Bread Pakora",   price: 25, emoji: "🫓", ordersCount: 175 },
+      { id: 5, name: "Mango Juice",    price: 35, emoji: "🥭", ordersCount: 133 },
+      { id: 6, name: "Veg Burger",     price: 55, emoji: "🍔", ordersCount: 87  },
+      { id: 7, name: "Pav Bhaji",      price: 60, emoji: "🍲", ordersCount: 64  },
+      { id: 8, name: "Lemon Soda",     price: 20, emoji: "🍋", ordersCount: 200 },
+    ];
+
+    const INITIAL_STUDENTS = [
+      { id: 1, name: "Aarav Sharma", referralCode: "AAR-2024", totalSpent: 80 },
+      { id: 2, name: "Priya Mehta",  referralCode: "PRI-2024", totalSpent: 55 },
+      { id: 3, name: "Rohan Gupta",  referralCode: "ROH-2024", totalSpent: 90 },
+    ];
+
+    const INITIAL_ORDERS = [
+      { id: 1, studentId: 1, snackId: 2, snackName: "Samosa (2 pcs)", quantity: 2, totalAmount: 40, date: "2025-01-10" },
+      { id: 2, studentId: 1, snackId: 3, snackName: "Cold Coffee",    quantity: 1, totalAmount: 40, date: "2025-01-11" },
+      { id: 3, studentId: 2, snackId: 6, snackName: "Veg Burger",     quantity: 1, totalAmount: 55, date: "2025-01-10" },
+      { id: 4, studentId: 3, snackId: 1, snackName: "Masala Maggi",   quantity: 3, totalAmount: 90, date: "2025-01-09" },
+    ];
+
+    // "Aarav Sharma" → "AS"
+    function getInitials(name) {
+      return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+    }
+
+    // Makes a code like "KAV-7291"
+    function makeReferralCode(name) {
+      const prefix = name.slice(0, 3).toUpperCase();
+      const num    = Math.floor(1000 + Math.random() * 9000);
+      return `${prefix}-${num}`;
+    }
+
+    // Simulates an API delay so we can show a spinner
+    function fakeDelay(ms = 600) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+
+    // ============================================================
+    // SECTION 2: STORE  (same as store.js)
+    // Global state using React Context — shared data for all components
+    // ============================================================
+
+    const AppContext = React.createContext();
+
+    function AppProvider({ children }) {
+      const [snacks,   setSnacks]   = React.useState(INITIAL_SNACKS);
+      const [students, setStudents] = React.useState(INITIAL_STUDENTS);
+      const [orders,   setOrders]   = React.useState(INITIAL_ORDERS);
+      const [toast,    setToast]    = React.useState(null);
+
+      function showToast(message, type = "success") {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000);
+      }
+
+      async function createStudent(name) {
+        await fakeDelay();
+        const newStudent = {
+          id: Date.now(),
+          name,
+          referralCode: makeReferralCode(name),
+          totalSpent: 0,
+        };
+        setStudents(prev => [...prev, newStudent]);
+        showToast(`Student "${name}" created!`);
+        return newStudent;
+      }
+
+      async function placeOrder(studentId, snackId, quantity) {
+        await fakeDelay();
+        const snack   = snacks.find(s => s.id === snackId);
+        const student = students.find(s => s.id === studentId);
+        const amount  = snack.price * quantity;
+
+        const newOrder = {
+          id: Date.now(),
+          studentId,
+          snackId,
+          snackName:   snack.name,
+          quantity,
+          totalAmount: amount,
+          date: new Date().toISOString().slice(0, 10),
+        };
+
+        setOrders(prev => [...prev, newOrder]);
+
+        setStudents(prev =>
+          prev.map(s => s.id === studentId
+            ? { ...s, totalSpent: s.totalSpent + amount }
+            : s
+          )
+        );
+
+        setSnacks(prev =>
+          prev.map(s => s.id === snackId
+            ? { ...s, ordersCount: s.ordersCount + 1 }
+            : s
+          )
+        );
+
+        showToast(`Order placed! ₹${amount} charged to ${student.name}`);
+        return newOrder;
+      }
+
+      return (
+        <AppContext.Provider value={{ snacks, students, orders, createStudent, placeOrder, showToast }}>
+          {children}
+          {toast && (
+            <div className={`toast ${toast.type}`}>
+              {toast.type === "success" ? "✅" : "❌"} {toast.message}
+            </div>
+          )}
+        </AppContext.Provider>
+      );
+    }
+
+    function useApp() {
+      return React.useContext(AppContext);
+    }
+
+
+    // ============================================================
+    // SECTION 3: COMPONENTS  (same as components.js)
+    // Small reusable building blocks
+    // ============================================================
+
+    // Reusable popup wrapper
+    function Modal({ title, subtitle, onClose, children }) {
+      function handleOverlayClick(e) {
+        if (e.target === e.currentTarget) onClose();
+      }
+      return (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <div className="modal">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+              <h2 className="modal-title">{title}</h2>
+              <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1.3rem", lineHeight: 1 }}>×</button>
+            </div>
+            {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // Form inside the order modal
+    function OrderForm({ snack, preselectedStudentId, onClose }) {
+      const { students, placeOrder } = useApp();
+      const [studentId, setStudentId] = React.useState(preselectedStudentId || "");
+      const [quantity,  setQuantity]  = React.useState(1);
+      const [loading,   setLoading]   = React.useState(false);
+      const [errors,    setErrors]    = React.useState({});
+
+      function validate() {
+        const e = {};
+        if (!studentId) e.student = "Please select a student";
+        return e;
+      }
+
+      async function handleSubmit() {
+        const e = validate();
+        if (Object.keys(e).length > 0) { setErrors(e); return; }
+        setLoading(true);
+        await placeOrder(Number(studentId), snack.id, quantity);
+        setLoading(false);
+        onClose();
+      }
+
+      return (
+        <>
+          <div className="form-group">
+            <label className="form-label">Select Student</label>
+            <select className="form-select" value={studentId} onChange={e => { setStudentId(e.target.value); setErrors({}); }}>
+              <option value="">-- Choose a student --</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {errors.student && <p className="form-error">{errors.student}</p>}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Quantity (1–5)</label>
+            <div className="qty-stepper">
+              <button className="qty-btn" onClick={() => setQuantity(q => Math.max(1, q - 1))}>−</button>
+              <span className="qty-val">{quantity}</span>
+              <button className="qty-btn" onClick={() => setQuantity(q => Math.min(5, q + 1))}>+</button>
+            </div>
+          </div>
+
+          <div className="order-summary">
+            <div className="order-summary-row">
+              <span>{snack.name} × {quantity}</span>
+              <span>₹{snack.price} × {quantity}</span>
+            </div>
+            <div className="order-summary-total">
+              <span>Total</span>
+              <span>₹{snack.price * quantity}</span>
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>
+              {loading ? "Placing..." : "Place Order"}
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    // One snack card in the grid
+    function SnackCard({ snack }) {
+      const [showModal, setShowModal] = React.useState(false);
+      return (
+        <>
+          <div className="card">
+            <span className="snack-emoji">{snack.emoji}</span>
+            <p className="snack-name">{snack.name}</p>
+            <div className="snack-meta">
+              <span className="price-tag">₹{snack.price}</span>
+              <span className="order-count">🛒 {snack.ordersCount} orders</span>
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Order Now</button>
+          </div>
+          {showModal && (
+            <Modal title={`Order ${snack.name}`} subtitle={`₹${snack.price} per item`} onClose={() => setShowModal(false)}>
+              <OrderForm snack={snack} onClose={() => setShowModal(false)} />
+            </Modal>
+          )}
+        </>
+      );
+    }
+
+    // One row in the students list
+    function StudentListItem({ student, onViewDetail }) {
+      return (
+        <div className="student-card">
+          <div className="avatar">{getInitials(student.name)}</div>
+          <div className="student-info">
+            <p className="student-name">{student.name}</p>
+            <div className="student-meta"><span>🔑 {student.referralCode}</span></div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "10px" }}>
+            <span className="spent-badge">₹{student.totalSpent} spent</span>
+            <button className="btn btn-secondary" style={{ padding: "7px 14px", fontSize: "0.82rem" }} onClick={() => onViewDetail(student.id)}>
+              View →
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Top navigation bar
+    function Navbar({ page, setPage }) {
+      return (
+        <nav className="navbar">
+          <div className="logo">Canteen<span>Hub</span></div>
+          <div className="nav-links">
+            <button className={`nav-btn ${page === "snacks" ? "active" : ""}`} onClick={() => setPage("snacks")}>🍜 Menu</button>
+            <button className={`nav-btn ${page === "students" ? "active" : ""}`} onClick={() => setPage("students")}>👨‍🎓 Students</button>
+          </div>
+        </nav>
+      );
+    }
+
+    // Modal to create a new student
+    function CreateStudentModal({ onClose }) {
+      const { createStudent } = useApp();
+      const [name,    setName]    = React.useState("");
+      const [loading, setLoading] = React.useState(false);
+      const [error,   setError]   = React.useState("");
+
+      async function handleSubmit() {
+        if (!name.trim())           { setError("Name cannot be empty"); return; }
+        if (name.trim().length < 2) { setError("Name must be at least 2 characters"); return; }
+        setLoading(true);
+        await createStudent(name.trim());
+        setLoading(false);
+        onClose();
+      }
+
+      return (
+        <Modal title="Add New Student" subtitle="A referral code will be auto-generated." onClose={onClose}>
+          <div className="form-group">
+            <label className="form-label">Student Name</label>
+            <input
+              className="form-input"
+              type="text"
+              placeholder="e.g. Kavya Singh"
+              value={name}
+              onChange={e => { setName(e.target.value); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              autoFocus
+            />
+            {error && <p className="form-error">{error}</p>}
+          </div>
+          <div className="hint-box">💡 Referral code is auto-generated from the student's name.</div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-green" onClick={handleSubmit} disabled={loading}>
+              {loading ? "Creating..." : "Create Student"}
+            </button>
+          </div>
+        </Modal>
+      );
+    }
+
+    // Loading spinner
+    function Spinner() {
+      return <div className="loading-wrap"><div className="spinner"></div></div>;
+    }
+
+
+    // ============================================================
+    // SECTION 4: PAGES  (same as pages.js)
+    // Full page components that combine the smaller components above
+    // ============================================================
+
+    function SnacksPage() {
+      const { snacks } = useApp();
+      const [loading, setLoading] = React.useState(true);
+
+      React.useEffect(() => {
+        fakeDelay(800).then(() => setLoading(false));
+      }, []);
+
+      if (loading) return <Spinner />;
+
+      const mostPopular = [...snacks].sort((a, b) => b.ordersCount - a.ordersCount)[0];
+      const cheapest    = Math.min(...snacks.map(s => s.price));
+
+      return (
+        <div>
+          <h1 className="page-title">🍽️ Today's Menu</h1>
+          <p className="page-subtitle">Fresh snacks from the canteen — order for any student.</p>
+
+          <div className="stats-row">
+            <div className="stat-card">
+              <p className="stat-label">Total Items</p>
+              <p className="stat-val yellow">{snacks.length}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Most Popular</p>
+              <p className="stat-val orange small">{mostPopular.name}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Starting from</p>
+              <p className="stat-val green">₹{cheapest}</p>
+            </div>
+          </div>
+
+          <div className="grid">
+            {snacks.map(snack => <SnackCard key={snack.id} snack={snack} />)}
+          </div>
+        </div>
+      );
+    }
+
+    function StudentsPage({ onViewStudent }) {
+      const { students } = useApp();
+      const [showCreate, setShowCreate] = React.useState(false);
+      const [loading,    setLoading]    = React.useState(true);
+      const [search,     setSearch]     = React.useState("");
+
+      React.useEffect(() => {
+        fakeDelay(600).then(() => setLoading(false));
+      }, []);
+
+      if (loading) return <Spinner />;
+
+      const filtered = students.filter(s =>
+        s.name.toLowerCase().includes(search.toLowerCase())
+      );
+
+      return (
+        <div>
+          <div className="page-header">
+            <div>
+              <h1 className="page-title">👨‍🎓 Students</h1>
+              <p className="page-subtitle">{students.length} registered students</p>
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Add Student</button>
+          </div>
+
+          <div className="search-wrap">
+            <input
+              className="form-input search-input"
+              type="text"
+              placeholder="🔍  Search by name..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="empty">
+              <p className="empty-icon">🔍</p>
+              <p className="empty-text">No students found for "{search}"</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {filtered.map(s => <StudentListItem key={s.id} student={s} onViewDetail={onViewStudent} />)}
+            </div>
+          )}
+
+          {showCreate && <CreateStudentModal onClose={() => setShowCreate(false)} />}
+        </div>
+      );
+    }
+
+    function StudentDetailPage({ studentId, onBack }) {
+      const { students, orders, snacks } = useApp();
+      const [showOrderModal, setShowOrderModal] = React.useState(false);
+      const [selectedSnack,  setSelectedSnack]  = React.useState(null);
+      const [loading,        setLoading]        = React.useState(true);
+
+      React.useEffect(() => {
+        fakeDelay(500).then(() => setLoading(false));
+      }, []);
+
+      if (loading) return <Spinner />;
+
+      const student = students.find(s => s.id === studentId);
+      if (!student) return <div><button className="back-btn" onClick={onBack}>← Back</button><p>Student not found.</p></div>;
+
+      const studentOrders = orders
+        .filter(o => o.studentId === studentId)
+        .sort((a, b) => b.id - a.id);
+
+      const avgSpend = studentOrders.length > 0
+        ? Math.round(student.totalSpent / studentOrders.length)
+        : 0;
+
+      return (
+        <div>
+          <button className="back-btn" onClick={onBack}>← Back to Students</button>
+
+          <div className="detail-header">
+            <div className="detail-avatar">{getInitials(student.name)}</div>
+            <div>
+              <p className="detail-name">{student.name}</p>
+              <div className="detail-badges">
+                <span className="badge">🔑 {student.referralCode}</span>
+                <span className="spent-badge">₹{student.totalSpent} total spent</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="stats-row">
+            <div className="stat-card">
+              <p className="stat-label">Total Orders</p>
+              <p className="stat-val yellow">{studentOrders.length}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Total Spent</p>
+              <p className="stat-val green">₹{student.totalSpent}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Avg per order</p>
+              <p className="stat-val orange">₹{avgSpend}</p>
+            </div>
+          </div>
+
+          <div className="section-box">
+            <p className="section-title">🛒 Place New Order</p>
+            <div className="quick-order-btns">
+              {snacks.map(snack => (
+                <button key={snack.id} className="btn btn-secondary" style={{ fontSize: "0.85rem" }}
+                  onClick={() => { setSelectedSnack(snack); setShowOrderModal(true); }}>
+                  {snack.emoji} {snack.name} – ₹{snack.price}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="section-box">
+            <p className="section-title">📋 Order History</p>
+            {studentOrders.length === 0 ? (
+              <div className="empty" style={{ padding: "30px 0" }}>
+                <p className="empty-icon">🛒</p>
+                <p className="empty-text">No orders yet</p>
+              </div>
+            ) : (
+              <table className="order-table">
+                <thead>
+                  <tr><th>Snack</th><th>Qty</th><th>Amount</th><th>Date</th></tr>
+                </thead>
+                <tbody>
+                  {studentOrders.map(order => (
+                    <tr key={order.id}>
+                      <td>{order.snackName}</td>
+                      <td>×{order.quantity}</td>
+                      <td className="order-amount">₹{order.totalAmount}</td>
+                      <td className="order-date">{order.date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {showOrderModal && selectedSnack && (
+            <Modal title={`Order ${selectedSnack.name}`} subtitle={`Ordering for ${student.name}`} onClose={() => setShowOrderModal(false)}>
+              <OrderForm snack={selectedSnack} preselectedStudentId={student.id} onClose={() => setShowOrderModal(false)} />
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+
+    // ============================================================
+    // SECTION 5: APP  (same as app.js)
+    // Root component — controls which page is shown
+    // ============================================================
+
+    function App() {
+      const [page,            setPage]            = React.useState("snacks");
+      const [activeStudentId, setActiveStudentId] = React.useState(null);
+
+      function handleViewStudent(id) {
+        setActiveStudentId(id);
+        setPage("studentDetail");
+      }
+
+      function handleBack() {
+        setActiveStudentId(null);
+        setPage("students");
+      }
+
+      function handleNavChange(newPage) {
+        setPage(newPage);
+        setActiveStudentId(null);
+      }
+
+      function renderPage() {
+        if (page === "snacks")        return <SnacksPage />;
+        if (page === "students")      return <StudentsPage onViewStudent={handleViewStudent} />;
+        if (page === "studentDetail") return <StudentDetailPage studentId={activeStudentId} onBack={handleBack} />;
+      }
+
+      return (
+        <AppProvider>
+          <Navbar page={page} setPage={handleNavChange} />
+          <div className="main">{renderPage()}</div>
+        </AppProvider>
+      );
+    }
+
+    // Start the React app
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+
+  </script>
+</body>
+</html>
